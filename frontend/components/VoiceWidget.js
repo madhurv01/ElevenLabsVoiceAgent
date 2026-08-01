@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export default function VoiceWidget() {
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+  const widgetRef = useRef(null);
 
   useEffect(() => {
     if (!document.getElementById("elevenlabs-convai-script")) {
@@ -15,27 +16,47 @@ export default function VoiceWidget() {
       document.body.appendChild(script);
     }
 
-    // Registers the "show_dashboard" Client Tool defined on the ElevenLabs
-    // agent. The widget fires this event right before a call starts, letting
-    // us inject browser-side functions the agent can call mid-conversation —
-    // this is how a voice command actually opens UI, since the agent's
-    // server tools can only reach our backend, never the page itself.
+    const showDashboard = ({ table, email }) => {
+      console.log("[voice-widget] show_dashboard called with", { table, email });
+      window.dispatchEvent(
+        new CustomEvent("ai-voice-support:show-dashboard", {
+          detail: { table, email },
+        })
+      );
+      return "Dashboard opened on screen.";
+    };
+
+    const clientTools = { show_dashboard: showDashboard };
+
+    // The widget's exact client-tool wiring mechanism can vary by widget
+    // version, so we register through every documented/likely path at once —
+    // whichever one the loaded widget actually supports will pick it up.
+    // Check the browser console for "[voice-widget]" logs to see which fires.
+
     const handleWidgetCall = (event) => {
-      event.detail.config.clientTools = {
-        ...(event.detail.config.clientTools || {}),
-        show_dashboard: ({ table, email }) => {
-          window.dispatchEvent(
-            new CustomEvent("ai-voice-support:show-dashboard", {
-              detail: { table, email },
-            })
-          );
-          return "Dashboard opened on screen.";
-        },
-      };
+      console.log("[voice-widget] elevenlabs-convai:call event fired", event.detail);
+      if (event.detail && event.detail.config) {
+        event.detail.config.clientTools = {
+          ...(event.detail.config.clientTools || {}),
+          ...clientTools,
+        };
+      }
     };
 
     document.addEventListener("elevenlabs-convai:call", handleWidgetCall);
-    return () => document.removeEventListener("elevenlabs-convai:call", handleWidgetCall);
+    const el = widgetRef.current;
+    el?.addEventListener("elevenlabs-convai:call", handleWidgetCall);
+
+    // Some widget versions read a `clientTools` property directly off the
+    // custom element instead of (or in addition to) the call event.
+    if (el) {
+      el.clientTools = clientTools;
+    }
+
+    return () => {
+      document.removeEventListener("elevenlabs-convai:call", handleWidgetCall);
+      el?.removeEventListener("elevenlabs-convai:call", handleWidgetCall);
+    };
   }, []);
 
   if (!agentId) {
@@ -54,7 +75,7 @@ export default function VoiceWidget() {
         Speak to Support
       </p>
       {/* ElevenLabs Conversational AI widget web component */}
-      <elevenlabs-convai agent-id={agentId}></elevenlabs-convai>
+      <elevenlabs-convai ref={widgetRef} agent-id={agentId}></elevenlabs-convai>
       <p className="text-xs text-slate-500 text-center max-w-xs">
         Tap the mic and ask about an order, ticket, payment, or your account.
       </p>
