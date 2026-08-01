@@ -1,3 +1,4 @@
+import re
 from fastapi import HTTPException
 from .db import get_supabase
 
@@ -8,10 +9,26 @@ def _find_customer_by_email(email: str):
     return res.data[0] if res.data else None
 
 
+def _normalize_code(raw: str) -> str:
+    """
+    Voice transcription of codes like "ORD-1001" or "TCK-5001" is unreliable —
+    it may come through as "ord 1001", "O R D dash 1001", lowercase, or missing
+    the dash entirely. Strip all separators/spacing and re-insert the dash
+    between the letter prefix and the digits so lookups still match.
+    """
+    if not raw:
+        return raw
+    cleaned = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
+    match = re.match(r"^([A-Z]+)(\d+)$", cleaned)
+    if match:
+        return f"{match.group(1)}-{match.group(2)}"
+    return raw.strip().upper()
+
+
 def get_order_status(order_number: str, email: str | None = None):
     sb = get_supabase()
-    query = sb.table("orders").select("*, customers(full_name, email)").eq(
-        "order_number", order_number
+    query = sb.table("orders").select("*, customers(full_name, email)").ilike(
+        "order_number", _normalize_code(order_number)
     )
     res = query.limit(1).execute()
 
@@ -42,7 +59,7 @@ def get_ticket_status(ticket_number: str, email: str | None = None):
     res = (
         sb.table("support_tickets")
         .select("*, customers(full_name, email)")
-        .eq("ticket_number", ticket_number)
+        .ilike("ticket_number", _normalize_code(ticket_number))
         .limit(1)
         .execute()
     )
@@ -82,8 +99,8 @@ def get_account_details(email: str):
 
 def verify_payment(order_number: str, email: str | None = None):
     sb = get_supabase()
-    order_res = sb.table("orders").select("id, customers(email)").eq(
-        "order_number", order_number
+    order_res = sb.table("orders").select("id, customers(email)").ilike(
+        "order_number", _normalize_code(order_number)
     ).limit(1).execute()
 
     if not order_res.data:
@@ -144,11 +161,12 @@ VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
 
 
 def cancel_order(order_number: str, email: str):
+    order_number = _normalize_code(order_number)
     sb = get_supabase()
     res = (
         sb.table("orders")
-        .select("id, status, customers(email)")
-        .eq("order_number", order_number)
+        .select("id, order_number, status, customers(email)")
+        .ilike("order_number", order_number)
         .limit(1)
         .execute()
     )
@@ -171,15 +189,16 @@ def cancel_order(order_number: str, email: str):
         )
 
     sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
-    return {"order_number": order_number, "status": "cancelled"}
+    return {"order_number": order["order_number"], "status": "cancelled"}
 
 
 def update_ticket(ticket_number: str, email: str, priority: str | None = None, close: bool = False):
+    ticket_number = _normalize_code(ticket_number)
     sb = get_supabase()
     res = (
         sb.table("support_tickets")
-        .select("id, status, customers(email)")
-        .eq("ticket_number", ticket_number)
+        .select("id, ticket_number, status, customers(email)")
+        .ilike("ticket_number", ticket_number)
         .limit(1)
         .execute()
     )
@@ -197,6 +216,7 @@ def update_ticket(ticket_number: str, email: str, priority: str | None = None, c
 
     updates = {}
     if priority is not None:
+        priority = priority.strip().lower()
         if priority not in VALID_PRIORITIES:
             raise HTTPException(
                 status_code=400,
@@ -211,7 +231,7 @@ def update_ticket(ticket_number: str, email: str, priority: str | None = None, c
         raise HTTPException(status_code=400, detail="Nothing to update.")
 
     sb.table("support_tickets").update(updates).eq("id", ticket["id"]).execute()
-    return {"ticket_number": ticket_number, **updates}
+    return {"ticket_number": ticket["ticket_number"], **updates}
 
 
 def update_phone(email: str, phone: str):

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function VoiceWidget() {
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
   const widgetRef = useRef(null);
+  const [dashboardLink, setDashboardLink] = useState(null);
 
   useEffect(() => {
     if (!document.getElementById("elevenlabs-convai-script")) {
@@ -53,9 +54,19 @@ export default function VoiceWidget() {
       el.clientTools = clientTools;
     }
 
+    // Keep a "Go to Dashboard" shortcut visible on this card once the agent
+    // has opened one, independent of whether the overlay is still open.
+    const handleDashboardEvent = (e) => {
+      const { table, email } = e.detail || {};
+      if (!table || !email) return;
+      setDashboardLink(`/dashboard?table=${table}&email=${encodeURIComponent(email)}`);
+    };
+    window.addEventListener("ai-voice-support:show-dashboard", handleDashboardEvent);
+
     return () => {
       document.removeEventListener("elevenlabs-convai:call", handleWidgetCall);
       el?.removeEventListener("elevenlabs-convai:call", handleWidgetCall);
+      window.removeEventListener("ai-voice-support:show-dashboard", handleDashboardEvent);
     };
   }, []);
 
@@ -79,6 +90,17 @@ export default function VoiceWidget() {
       <p className="text-xs text-slate-500 text-center max-w-xs">
         Tap the mic and ask about an order, ticket, payment, or your account.
       </p>
+
+      {dashboardLink && (
+        <a
+          href={dashboardLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full text-center px-4 py-2 rounded-xl bg-radiant-600 hover:bg-radiant-700 text-white text-sm font-medium shadow-glow transition-colors"
+        >
+          Go to Your Dashboard ↗
+        </a>
+      )}
     </div>
   );
 }
