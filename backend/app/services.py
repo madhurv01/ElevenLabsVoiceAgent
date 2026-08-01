@@ -235,16 +235,33 @@ def log_call(
     sb = get_supabase()
     customer = _find_customer_by_email(customer_email) if customer_email else None
 
-    sb.table("call_logs").insert(
-        {
-            "conversation_id": conversation_id,
-            "customer_id": customer["id"] if customer else None,
-            "intent": intent,
-            "query_text": query_text,
-            "response_text": response_text,
-            "resolved": resolved,
-        }
-    ).execute()
+    existing = None
+    if conversation_id:
+        existing_res = (
+            sb.table("call_logs")
+            .select("id")
+            .eq("conversation_id", conversation_id)
+            .limit(1)
+            .execute()
+        )
+        existing = existing_res.data[0] if existing_res.data else None
+
+    row = {
+        "conversation_id": conversation_id,
+        "customer_id": customer["id"] if customer else None,
+        "intent": intent,
+        "query_text": query_text,
+        "response_text": response_text,
+        "resolved": resolved,
+    }
+    # Drop None values so a partial update (e.g. from the post-call webhook)
+    # doesn't blank out fields already set by the earlier log_call tool call.
+    row = {k: v for k, v in row.items() if v is not None}
+
+    if existing:
+        sb.table("call_logs").update(row).eq("id", existing["id"]).execute()
+    else:
+        sb.table("call_logs").insert(row).execute()
 
     return {"logged": True}
 

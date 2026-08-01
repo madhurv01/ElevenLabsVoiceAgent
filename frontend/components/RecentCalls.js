@@ -11,12 +11,21 @@ export default function RecentCalls() {
 
   useEffect(() => {
     let mounted = true;
-    fetch(`${API_BASE}/api/recent-calls?limit=8`)
-      .then((r) => r.json())
-      .then((data) => mounted && setCalls(Array.isArray(data) ? data : []))
-      .catch((e) => mounted && setError(e.message))
-      .finally(() => mounted && setLoading(false));
-    return () => (mounted = false);
+
+    const load = () => {
+      fetch(`${API_BASE}/api/recent-calls?limit=8`)
+        .then((r) => r.json())
+        .then((data) => mounted && setCalls(Array.isArray(data) ? data : []))
+        .catch((e) => mounted && setError(e.message))
+        .finally(() => mounted && setLoading(false));
+    };
+
+    load();
+    const interval = setInterval(load, 10000); // poll every 10s for new calls
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   return (

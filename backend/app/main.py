@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -100,6 +100,42 @@ def update_phone(payload: UpdatePhoneRequest):
 @app.get("/api/recent-calls")
 def recent_calls(limit: int = 20):
     return services.get_recent_calls(limit)
+
+
+# =====================================================
+# ElevenLabs "Post-call webhook" receiver. Configure this under
+# Agent -> Settings -> Webhooks -> Post-call transcription, so every
+# conversation is logged automatically regardless of whether the agent
+# remembered to call the `log_call` tool mid-conversation.
+# =====================================================
+
+@app.post("/api/elevenlabs/post-call-webhook")
+async def elevenlabs_post_call_webhook(request: Request):
+    payload = await request.json()
+    data = payload.get("data", payload)  # ElevenLabs wraps the payload in "data"
+
+    conversation_id = data.get("conversation_id")
+    if not conversation_id:
+        raise HTTPException(status_code=400, detail="Missing conversation_id in webhook payload.")
+
+    analysis = data.get("analysis") or {}
+    summary = analysis.get("transcript_summary")
+    call_successful = analysis.get("call_successful")  # "success" | "failure" | "unknown"
+
+    dynamic_vars = (
+        data.get("conversation_initiation_client_data", {}).get("dynamic_variables", {})
+    )
+    customer_email = dynamic_vars.get("customer_email") or dynamic_vars.get("email")
+
+    services.log_call(
+        conversation_id=conversation_id,
+        customer_email=customer_email,
+        intent=None,
+        query_text=None,
+        response_text=summary,
+        resolved=(call_successful == "success"),
+    )
+    return {"received": True}
 
 
 # =====================================================
