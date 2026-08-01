@@ -97,6 +97,11 @@ def update_phone(payload: UpdatePhoneRequest):
     return services.update_phone(payload.email, payload.phone)
 
 
+@app.get("/api/analytics/{table}")
+def analytics(table: str, email: str):
+    return services.get_analytics(table, email)
+
+
 @app.get("/api/recent-calls")
 def recent_calls(limit: int = 20):
     return services.get_recent_calls(limit)

@@ -5,6 +5,7 @@ import VoiceWidget from "../components/VoiceWidget";
 import RecentCalls from "../components/RecentCalls";
 import QuickLookup from "../components/QuickLookup";
 import TiltCard from "../components/TiltCard";
+import AnalyticsDashboard from "../components/AnalyticsDashboard";
 
 const container = {
   hidden: { opacity: 0 },
@@ -76,6 +77,8 @@ export default function HomePage() {
         Backend never runs raw SQL from the agent — every request goes through
         validated, access-controlled functions.
       </motion.footer>
+
+      <AnalyticsDashboard />
     </motion.main>
   );
 }

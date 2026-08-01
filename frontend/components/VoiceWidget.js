@@ -6,13 +6,36 @@ export default function VoiceWidget() {
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
 
   useEffect(() => {
-    if (document.getElementById("elevenlabs-convai-script")) return;
-    const script = document.createElement("script");
-    script.id = "elevenlabs-convai-script";
-    script.src = "https://elevenlabs.io/convai-widget/index.js";
-    script.async = true;
-    script.type = "text/javascript";
-    document.body.appendChild(script);
+    if (!document.getElementById("elevenlabs-convai-script")) {
+      const script = document.createElement("script");
+      script.id = "elevenlabs-convai-script";
+      script.src = "https://elevenlabs.io/convai-widget/index.js";
+      script.async = true;
+      script.type = "text/javascript";
+      document.body.appendChild(script);
+    }
+
+    // Registers the "show_dashboard" Client Tool defined on the ElevenLabs
+    // agent. The widget fires this event right before a call starts, letting
+    // us inject browser-side functions the agent can call mid-conversation —
+    // this is how a voice command actually opens UI, since the agent's
+    // server tools can only reach our backend, never the page itself.
+    const handleWidgetCall = (event) => {
+      event.detail.config.clientTools = {
+        ...(event.detail.config.clientTools || {}),
+        show_dashboard: ({ table, email }) => {
+          window.dispatchEvent(
+            new CustomEvent("ai-voice-support:show-dashboard", {
+              detail: { table, email },
+            })
+          );
+          return "Dashboard opened on screen.";
+        },
+      };
+    };
+
+    document.addEventListener("elevenlabs-convai:call", handleWidgetCall);
+    return () => document.removeEventListener("elevenlabs-convai:call", handleWidgetCall);
   }, []);
 
   if (!agentId) {

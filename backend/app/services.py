@@ -266,6 +266,150 @@ def log_call(
     return {"logged": True}
 
 
+def _month_key(iso_ts: str) -> str:
+    return (iso_ts or "")[:7]  # "YYYY-MM"
+
+
+def _count_by(rows: list, field: str) -> list:
+    counts = {}
+    for r in rows:
+        key = r.get(field) or "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return [{"label": k, "count": v} for k, v in sorted(counts.items())]
+
+
+def get_order_analytics(email: str):
+    customer = _find_customer_by_email(email)
+    if not customer:
+        raise HTTPException(status_code=404, detail="No account found with that email.")
+
+    sb = get_supabase()
+    res = sb.table("orders").select("*").eq("customer_id", customer["id"]).execute()
+    orders = res.data or []
+
+    total_orders = len(orders)
+    total_spent = round(sum(o["total_amount"] for o in orders), 2)
+    avg_order_value = round(total_spent / total_orders, 2) if total_orders else 0
+
+    spend_by_month = {}
+    for o in orders:
+        m = _month_key(o.get("created_at"))
+        spend_by_month[m] = round(spend_by_month.get(m, 0) + o["total_amount"], 2)
+    spend_over_time = [{"month": k, "amount": v} for k, v in sorted(spend_by_month.items())]
+
+    return {
+        "table": "orders",
+        "total_orders": total_orders,
+        "total_spent": total_spent,
+        "avg_order_value": avg_order_value,
+        "status_breakdown": _count_by(orders, "status"),
+        "spend_over_time": spend_over_time,
+    }
+
+
+def get_payment_analytics(email: str):
+    customer = _find_customer_by_email(email)
+    if not customer:
+        raise HTTPException(status_code=404, detail="No account found with that email.")
+
+    sb = get_supabase()
+    res = sb.table("payments").select("*").eq("customer_id", customer["id"]).execute()
+    payments = res.data or []
+
+    total_payments = len(payments)
+    total_paid = round(sum(p["amount"] for p in payments if p["status"] == "completed"), 2)
+
+    paid_by_month = {}
+    for p in payments:
+        if p["status"] != "completed":
+            continue
+        m = _month_key(p.get("created_at"))
+        paid_by_month[m] = round(paid_by_month.get(m, 0) + p["amount"], 2)
+    amount_over_time = [{"month": k, "amount": v} for k, v in sorted(paid_by_month.items())]
+
+    return {
+        "table": "payments",
+        "total_payments": total_payments,
+        "total_paid": total_paid,
+        "status_breakdown": _count_by(payments, "status"),
+        "method_breakdown": _count_by(payments, "payment_method"),
+        "amount_over_time": amount_over_time,
+    }
+
+
+def get_ticket_analytics(email: str):
+    customer = _find_customer_by_email(email)
+    if not customer:
+        raise HTTPException(status_code=404, detail="No account found with that email.")
+
+    sb = get_supabase()
+    res = sb.table("support_tickets").select("*").eq("customer_id", customer["id"]).execute()
+    tickets = res.data or []
+
+    total_tickets = len(tickets)
+    open_count = sum(1 for t in tickets if t["status"] in ("open", "in_progress"))
+    resolved_count = sum(1 for t in tickets if t["status"] in ("resolved", "closed"))
+
+    tickets_by_month = {}
+    for t in tickets:
+        m = _month_key(t.get("created_at"))
+        tickets_by_month[m] = tickets_by_month.get(m, 0) + 1
+    tickets_over_time = [{"month": k, "count": v} for k, v in sorted(tickets_by_month.items())]
+
+    return {
+        "table": "support_tickets",
+        "total_tickets": total_tickets,
+        "open_count": open_count,
+        "resolved_count": resolved_count,
+        "status_breakdown": _count_by(tickets, "status"),
+        "priority_breakdown": _count_by(tickets, "priority"),
+        "tickets_over_time": tickets_over_time,
+    }
+
+
+def get_account_analytics(email: str):
+    customer = _find_customer_by_email(email)
+    if not customer:
+        raise HTTPException(status_code=404, detail="No account found with that email.")
+
+    sb = get_supabase()
+    orders = sb.table("orders").select("total_amount").eq("customer_id", customer["id"]).execute().data or []
+    tickets = sb.table("support_tickets").select("status").eq("customer_id", customer["id"]).execute().data or []
+    payments = sb.table("payments").select("amount, status").eq("customer_id", customer["id"]).execute().data or []
+
+    return {
+        "table": "customers",
+        "full_name": customer["full_name"],
+        "email": customer["email"],
+        "account_status": customer["account_status"],
+        "member_since": customer.get("created_at"),
+        "total_orders": len(orders),
+        "total_spent": round(sum(o["total_amount"] for o in orders), 2),
+        "total_tickets": len(tickets),
+        "open_tickets": sum(1 for t in tickets if t["status"] in ("open", "in_progress")),
+        "total_payments": len(payments),
+        "total_paid": round(sum(p["amount"] for p in payments if p["status"] == "completed"), 2),
+    }
+
+
+ANALYTICS_HANDLERS = {
+    "orders": get_order_analytics,
+    "payments": get_payment_analytics,
+    "support_tickets": get_ticket_analytics,
+    "customers": get_account_analytics,
+}
+
+
+def get_analytics(table: str, email: str):
+    handler = ANALYTICS_HANDLERS.get(table)
+    if not handler:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown table '{table}'. Must be one of: {', '.join(ANALYTICS_HANDLERS)}.",
+        )
+    return handler(email)
+
+
 def get_recent_calls(limit: int = 20):
     sb = get_supabase()
     res = (
