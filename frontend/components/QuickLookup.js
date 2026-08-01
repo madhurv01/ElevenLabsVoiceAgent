@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -54,13 +55,20 @@ export default function QuickLookup() {
               setResult(null);
               setErr(null);
             }}
-            className={`px-3 py-1.5 rounded-full text-sm transition-all ${
+            className={`relative px-3 py-1.5 rounded-full text-sm transition-colors ${
               tab.key === t.key
-                ? "bg-radiant-500 text-white shadow-glow"
-                : "bg-white/60 text-slate-600 hover:bg-white"
+                ? "text-white"
+                : "text-slate-600 hover:bg-white/60"
             }`}
           >
-            {t.label}
+            {tab.key === t.key && (
+              <motion.span
+                layoutId="active-tab-pill"
+                className="absolute inset-0 rounded-full bg-radiant-500 shadow-glow"
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
+              />
+            )}
+            <span className="relative z-10">{t.label}</span>
           </button>
         ))}
       </div>
@@ -81,12 +89,29 @@ export default function QuickLookup() {
         </button>
       </div>
 
-      {err && <p className="text-sm text-rose-500 mt-3">{err}</p>}
-      {result && (
-        <pre className="mt-4 text-xs bg-slate-900/90 text-emerald-300 rounded-xl p-4 overflow-x-auto">
+      <AnimatePresence mode="wait">
+        {err && (
+          <motion.p
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="text-sm text-rose-500 mt-3"
+          >
+            {err}
+          </motion.p>
+        )}
+        {result && (
+          <motion.pre
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 22 }}
+            className="mt-4 text-xs bg-slate-900/90 text-emerald-300 rounded-xl p-4 overflow-x-auto"
+          >
 {JSON.stringify(result, null, 2)}
-        </pre>
-      )}
+          </motion.pre>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
