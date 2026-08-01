@@ -105,3 +105,80 @@ insert into payments (order_id, customer_id, amount, status, payment_method, tra
 select o.id, o.customer_id, o.total_amount, 'completed', 'card', 'TXN-' || substr(o.order_number, 5)
 from orders o
 on conflict do nothing;
+
+-- =====================================================
+-- Bulk dummy data (50 rows per table) for load/testing
+-- =====================================================
+
+-- 50 dummy customers
+insert into customers (full_name, email, phone, account_status)
+select
+    'Test Customer ' || n,
+    'dummy' || n || '@example.com',
+    '+91-90000' || lpad(n::text, 5, '0'),
+    (array['active', 'active', 'active', 'suspended', 'closed'])[1 + (n % 5)]
+from generate_series(1, 50) as n
+on conflict (email) do nothing;
+
+-- 50 dummy orders, spread across the dummy customers
+with cust as (
+    select array_agg(id) as ids
+    from customers
+    where email like 'dummy%@example.com'
+)
+insert into orders (order_number, customer_id, status, total_amount, tracking_number, estimated_delivery)
+select
+    'ORD-' || (2000 + n),
+    (select ids[1 + ((n - 1) % array_length(ids, 1))] from cust),
+    (array['processing', 'shipped', 'delivered', 'cancelled'])[1 + (n % 4)],
+    round((20 + random() * 480)::numeric, 2),
+    case when n % 4 = 0 then null else 'TRK-' || (90000 + n) end,
+    current_date + ((n % 14) || ' days')::interval
+from generate_series(1, 50) as n
+on conflict (order_number) do nothing;
+
+-- 50 dummy support tickets, spread across the dummy customers
+with cust as (
+    select array_agg(id) as ids
+    from customers
+    where email like 'dummy%@example.com'
+)
+insert into support_tickets (ticket_number, customer_id, subject, description, status, priority)
+select
+    'TCK-' || (6000 + n),
+    (select ids[1 + ((n - 1) % array_length(ids, 1))] from cust),
+    (array['Wrong item received', 'Refund not processed', 'Late delivery', 'Damaged product', 'Order missing item'])[1 + (n % 5)],
+    'Auto-generated dummy ticket description #' || n,
+    (array['open', 'in_progress', 'resolved', 'closed'])[1 + (n % 4)],
+    (array['low', 'normal', 'high', 'urgent'])[1 + (n % 4)]
+from generate_series(1, 50) as n
+on conflict (ticket_number) do nothing;
+
+-- 50 dummy payments, one per dummy order
+insert into payments (order_id, customer_id, amount, status, payment_method, transaction_id)
+select
+    o.id,
+    o.customer_id,
+    o.total_amount,
+    (array['pending', 'completed', 'failed', 'refunded'])[1 + (row_number() over (order by o.order_number)::int % 4)],
+    (array['card', 'upi', 'paypal', 'netbanking'])[1 + (row_number() over (order by o.order_number)::int % 4)],
+    'TXN-' || substr(o.order_number, 5)
+from orders o
+where o.order_number like 'ORD-2%'
+on conflict do nothing;
+
+-- 50 dummy call logs, spread across the dummy customers
+with cust as (
+    select array_agg(id) as ids
+    from customers
+    where email like 'dummy%@example.com'
+)
+insert into call_logs (customer_id, conversation_id, intent, query_text, response_text, resolved)
+select
+    (select ids[1 + ((n - 1) % array_length(ids, 1))] from cust),
+    'conv-dummy-' || n,
+    (array['order_status', 'ticket_status', 'account_details', 'verify_payment', 'create_ticket'])[1 + (n % 5)],
+    'Dummy voice query #' || n,
+    'Dummy agent response #' || n,
+    (n % 2 = 0)
+from generate_series(1, 50) as n;

@@ -140,6 +140,90 @@ def create_ticket(email: str, subject: str, description: str, priority: str = "n
     return res.data[0]
 
 
+VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
+
+
+def cancel_order(order_number: str, email: str):
+    sb = get_supabase()
+    res = (
+        sb.table("orders")
+        .select("id, status, customers(email)")
+        .eq("order_number", order_number)
+        .limit(1)
+        .execute()
+    )
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="No order found with that order number.")
+
+    order = res.data[0]
+
+    if order.get("customers", {}).get("email", "").lower() != email.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="This order does not match the email provided. Please verify your details.",
+        )
+
+    if order["status"] != "processing":
+        raise HTTPException(
+            status_code=409,
+            detail=f"This order can't be cancelled because it is already '{order['status']}'.",
+        )
+
+    sb.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
+    return {"order_number": order_number, "status": "cancelled"}
+
+
+def update_ticket(ticket_number: str, email: str, priority: str | None = None, close: bool = False):
+    sb = get_supabase()
+    res = (
+        sb.table("support_tickets")
+        .select("id, status, customers(email)")
+        .eq("ticket_number", ticket_number)
+        .limit(1)
+        .execute()
+    )
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="No support ticket found with that number.")
+
+    ticket = res.data[0]
+
+    if ticket.get("customers", {}).get("email", "").lower() != email.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="This ticket does not match the email provided. Please verify your details.",
+        )
+
+    updates = {}
+    if priority is not None:
+        if priority not in VALID_PRIORITIES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Priority must be one of: {', '.join(sorted(VALID_PRIORITIES))}.",
+            )
+        updates["priority"] = priority
+
+    if close:
+        updates["status"] = "closed"
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+
+    sb.table("support_tickets").update(updates).eq("id", ticket["id"]).execute()
+    return {"ticket_number": ticket_number, **updates}
+
+
+def update_phone(email: str, phone: str):
+    customer = _find_customer_by_email(email)
+    if not customer:
+        raise HTTPException(status_code=404, detail="No account found with that email.")
+
+    sb = get_supabase()
+    sb.table("customers").update({"phone": phone}).eq("id", customer["id"]).execute()
+    return {"email": email, "phone": phone}
+
+
 def log_call(
     conversation_id: str | None,
     customer_email: str | None,

@@ -37,6 +37,23 @@ class CallLogRequest(BaseModel):
     resolved: Optional[bool] = False
 
 
+class CancelOrderRequest(BaseModel):
+    order_number: str
+    email: EmailStr
+
+
+class UpdateTicketRequest(BaseModel):
+    ticket_number: str
+    email: EmailStr
+    priority: Optional[str] = None  # low, normal, high, urgent
+    close: Optional[bool] = False
+
+
+class UpdatePhoneRequest(BaseModel):
+    email: EmailStr
+    phone: str
+
+
 class ElevenLabsToolCall(BaseModel):
     """
     Generic shape for ElevenLabs 'server tool' webhook calls.

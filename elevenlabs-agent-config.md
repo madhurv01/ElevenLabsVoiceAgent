@@ -12,6 +12,13 @@ email to verify identity before sharing sensitive details. Keep responses short,
 warm, and conversational — this is a voice call, not a chat window. Never invent
 data; only state facts returned by your tools. If a tool returns an error or
 "not found", say so plainly and offer to create a support ticket instead.
+
+You can also make changes on the customer's behalf: cancelling their own order
+(only possible before it ships), changing the priority of or closing their own
+support ticket, and updating their phone number. Before calling any tool that
+changes data, repeat back exactly what you're about to do and wait for the
+customer to say yes — never make a change without explicit verbal confirmation.
+If a write action fails (e.g. the order already shipped), explain why plainly.
 ```
 
 ## 2. Add ONE Server Tool (recommended — simplest to maintain)
@@ -19,14 +26,14 @@ data; only state facts returned by your tools. If a tool returns an error or
 Go to Tools -> Add Tool -> Webhook, and configure:
 
 - **Name:** `support_backend`
-- **Description:** `Looks up order status, ticket status, account details, verifies payments, creates tickets, and logs the call. Always pass tool_name and parameters.`
+- **Description:** `Looks up and updates order status, ticket status, account details, verifies payments, creates tickets, and logs the call. Always pass tool_name and parameters. Before any write action (cancel_order, update_ticket, update_phone) always confirm the change with the customer out loud first.`
 - **Method:** POST
-- **URL:** `https://YOUR_BACKEND_DOMAIN/api/elevenlabs/tool`
+- **URL:** `https://elevenlabsvoiceagent.onrender.com/api/elevenlabs/tool`
 - **Body schema:**
 
 ```json
 {
-  "tool_name": "string (one of: get_order_status, get_ticket_status, get_account_details, verify_payment, create_ticket, log_call)",
+  "tool_name": "string (one of: get_order_status, get_ticket_status, get_account_details, verify_payment, create_ticket, cancel_order, update_ticket, update_phone, log_call)",
   "parameters": {
     "order_number": "string, optional",
     "ticket_number": "string, optional",
@@ -34,6 +41,8 @@ Go to Tools -> Add Tool -> Webhook, and configure:
     "subject": "string, optional",
     "description": "string, optional",
     "priority": "string, optional (low/normal/high/urgent)",
+    "close": "boolean, optional",
+    "phone": "string, optional",
     "conversation_id": "string, optional",
     "customer_email": "string, optional",
     "intent": "string, optional",
@@ -51,7 +60,17 @@ Tell the LLM (in the tool description) which `tool_name` to use for which situat
 - Customer asks "what's my account status" -> `tool_name: get_account_details`
 - Customer asks "did my payment go through" -> `tool_name: verify_payment`
 - Customer wants to file a complaint -> `tool_name: create_ticket`
+- Customer wants to cancel an order (only works if it hasn't shipped yet) ->
+  `tool_name: cancel_order`, `parameters: {order_number, email}`
+- Customer wants to change ticket priority or close a resolved ticket ->
+  `tool_name: update_ticket`, `parameters: {ticket_number, email, priority?, close?}`
+- Customer wants to update their phone number on file ->
+  `tool_name: update_phone`, `parameters: {email, phone}`
 - At the end of every call -> `tool_name: log_call` (summarize the intent + outcome)
+
+⚠️ For any write action (`cancel_order`, `update_ticket`, `update_phone`), the
+agent should always read back the change and get explicit verbal confirmation
+from the customer BEFORE calling the tool — put this in the system prompt.
 
 ## 3. Alternative: separate tools per function
 
