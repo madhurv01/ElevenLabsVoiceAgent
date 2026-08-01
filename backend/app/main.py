@@ -1,0 +1,133 @@
+import os
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+from . import services
+from .models import (
+    OrderStatusRequest,
+    TicketStatusRequest,
+    AccountLookupRequest,
+    PaymentVerificationRequest,
+    CreateTicketRequest,
+    CallLogRequest,
+    ElevenLabsToolCall,
+)
+
+load_dotenv()
+
+app = FastAPI(title="AI Voice Support Agent API", version="1.0.0")
+
+origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+def health():
+    return {"status": "ok", "service": "ai-voice-support-backend"}
+
+
+# =====================================================
+# Direct REST endpoints (usable by the frontend dashboard
+# or by ElevenLabs "webhook" tools pointed at a specific path)
+# =====================================================
+
+@app.post("/api/order-status")
+def order_status(payload: OrderStatusRequest):
+    return services.get_order_status(payload.order_number, payload.email)
+
+
+@app.post("/api/ticket-status")
+def ticket_status(payload: TicketStatusRequest):
+    return services.get_ticket_status(payload.ticket_number, payload.email)
+
+
+@app.post("/api/account-details")
+def account_details(payload: AccountLookupRequest):
+    return services.get_account_details(payload.email)
+
+
+@app.post("/api/verify-payment")
+def verify_payment(payload: PaymentVerificationRequest):
+    return services.verify_payment(payload.order_number, payload.email)
+
+
+@app.post("/api/create-ticket")
+def create_ticket(payload: CreateTicketRequest):
+    return services.create_ticket(
+        payload.email, payload.subject, payload.description, payload.priority
+    )
+
+
+@app.post("/api/log-call")
+def log_call(payload: CallLogRequest):
+    return services.log_call(
+        payload.conversation_id,
+        payload.customer_email,
+        payload.intent,
+        payload.query_text,
+        payload.response_text,
+        payload.resolved,
+    )
+
+
+@app.get("/api/recent-calls")
+def recent_calls(limit: int = 20):
+    return services.get_recent_calls(limit)
+
+
+# =====================================================
+# Single generic webhook endpoint for ElevenLabs
+# "Server Tools" (recommended integration path).
+# Configure ONE tool in ElevenLabs pointing here, and pass
+# `tool_name` + `parameters` in the request body/schema.
+# =====================================================
+
+@app.post("/api/elevenlabs/tool")
+def elevenlabs_tool_router(payload: ElevenLabsToolCall):
+    name = payload.tool_name
+    params = payload.parameters or {}
+
+    try:
+        if name == "get_order_status":
+            return services.get_order_status(
+                params.get("order_number"), params.get("email")
+            )
+        elif name == "get_ticket_status":
+            return services.get_ticket_status(
+                params.get("ticket_number"), params.get("email")
+            )
+        elif name == "get_account_details":
+            return services.get_account_details(params.get("email"))
+        elif name == "verify_payment":
+            return services.verify_payment(
+                params.get("order_number"), params.get("email")
+            )
+        elif name == "create_ticket":
+            return services.create_ticket(
+                params.get("email"),
+                params.get("subject"),
+                params.get("description"),
+                params.get("priority", "normal"),
+            )
+        elif name == "log_call":
+            return services.log_call(
+                params.get("conversation_id"),
+                params.get("customer_email"),
+                params.get("intent"),
+                params.get("query_text"),
+                params.get("response_text"),
+                params.get("resolved", False),
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown tool_name: {name}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
