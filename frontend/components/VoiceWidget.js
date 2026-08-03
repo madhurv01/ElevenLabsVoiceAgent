@@ -1,18 +1,73 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function VoiceWidget() {
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+  const widgetRef = useRef(null);
+  const [dashboardLink, setDashboardLink] = useState(null);
 
   useEffect(() => {
-    if (document.getElementById("elevenlabs-convai-script")) return;
-    const script = document.createElement("script");
-    script.id = "elevenlabs-convai-script";
-    script.src = "https://elevenlabs.io/convai-widget/index.js";
-    script.async = true;
-    script.type = "text/javascript";
-    document.body.appendChild(script);
+    if (!document.getElementById("elevenlabs-convai-script")) {
+      const script = document.createElement("script");
+      script.id = "elevenlabs-convai-script";
+      script.src = "https://elevenlabs.io/convai-widget/index.js";
+      script.async = true;
+      script.type = "text/javascript";
+      document.body.appendChild(script);
+    }
+
+    const showDashboard = ({ table, email }) => {
+      console.log("[voice-widget] show_dashboard called with", { table, email });
+      window.dispatchEvent(
+        new CustomEvent("ai-voice-support:show-dashboard", {
+          detail: { table, email },
+        })
+      );
+      return "Dashboard opened on screen.";
+    };
+
+    const clientTools = { show_dashboard: showDashboard };
+
+    // The widget's exact client-tool wiring mechanism can vary by widget
+    // version, so we register through every documented/likely path at once —
+    // whichever one the loaded widget actually supports will pick it up.
+    // Check the browser console for "[voice-widget]" logs to see which fires.
+
+    const handleWidgetCall = (event) => {
+      console.log("[voice-widget] elevenlabs-convai:call event fired", event.detail);
+      if (event.detail && event.detail.config) {
+        event.detail.config.clientTools = {
+          ...(event.detail.config.clientTools || {}),
+          ...clientTools,
+        };
+      }
+    };
+
+    document.addEventListener("elevenlabs-convai:call", handleWidgetCall);
+    const el = widgetRef.current;
+    el?.addEventListener("elevenlabs-convai:call", handleWidgetCall);
+
+    // Some widget versions read a `clientTools` property directly off the
+    // custom element instead of (or in addition to) the call event.
+    if (el) {
+      el.clientTools = clientTools;
+    }
+
+    // Keep a "Go to Dashboard" shortcut visible on this card once the agent
+    // has opened one, independent of whether the overlay is still open.
+    const handleDashboardEvent = (e) => {
+      const { table, email } = e.detail || {};
+      if (!table || !email) return;
+      setDashboardLink(`/dashboard?table=${table}&email=${encodeURIComponent(email)}`);
+    };
+    window.addEventListener("ai-voice-support:show-dashboard", handleDashboardEvent);
+
+    return () => {
+      document.removeEventListener("elevenlabs-convai:call", handleWidgetCall);
+      el?.removeEventListener("elevenlabs-convai:call", handleWidgetCall);
+      window.removeEventListener("ai-voice-support:show-dashboard", handleDashboardEvent);
+    };
   }, []);
 
   if (!agentId) {
@@ -31,10 +86,21 @@ export default function VoiceWidget() {
         Speak to Support
       </p>
       {/* ElevenLabs Conversational AI widget web component */}
-      <elevenlabs-convai agent-id={agentId}></elevenlabs-convai>
+      <elevenlabs-convai ref={widgetRef} agent-id={agentId}></elevenlabs-convai>
       <p className="text-xs text-slate-500 text-center max-w-xs">
         Tap the mic and ask about an order, ticket, payment, or your account.
       </p>
+
+      {dashboardLink && (
+        <a
+          href={dashboardLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full text-center px-4 py-2 rounded-xl bg-radiant-600 hover:bg-radiant-700 text-white text-sm font-medium shadow-glow transition-colors"
+        >
+          Go to Your Dashboard ↗
+        </a>
+      )}
     </div>
   );
 }

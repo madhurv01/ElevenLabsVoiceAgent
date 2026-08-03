@@ -7,17 +7,20 @@ html, body {
 }
 
 body {
-  @apply bg-radiant-gradient text-slate-800;
+  @apply text-slate-800;
   min-height: 100vh;
-  background-attachment: fixed;
+}
+
+::selection {
+  @apply bg-radiant-300/50;
 }
 
 .glass-card {
-  @apply bg-white/60 backdrop-blur-xl border border-white/70 shadow-glass rounded-3xl;
+  @apply bg-white/60 backdrop-blur-xl border border-white/70 shadow-inner-glow rounded-3xl;
 }
 
 .glass-card-hover {
-  @apply transition-all duration-300 hover:shadow-glow hover:-translate-y-0.5;
+  @apply transition-all duration-300 hover:shadow-glow-lg;
 }
 
 .radiant-ring {
@@ -31,4 +34,30 @@ body {
 
 .pulse-glow {
   animation: pulse-glow 2s ease-out infinite;
+}
+
+.gradient-text {
+  @apply bg-clip-text text-transparent;
+  background-image: linear-gradient(90deg, #7c3ff2, #5da8ff 45%, #4fe0c5 75%, #ff8fd6);
+  background-size: 200% auto;
+  animation: shimmer 6s linear infinite;
+}
+
+.shimmer-border {
+  position: relative;
+}
+
+.shimmer-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, transparent, rgba(149,99,255,0.6), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 3.5s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
