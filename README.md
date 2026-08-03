@@ -1,3 +1,10 @@
+
+<img
+    src="EricVoiceAgent.png"
+    alt="Build Your Own Agent Now - n8n AI Agents"
+    width="100%"
+  />
+
 # AI Customer Support Voice Agent
 ### ElevenLabs + Supabase + FastAPI + Next.js
 
